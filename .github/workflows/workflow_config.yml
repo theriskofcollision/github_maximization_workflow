@@ -1,0 +1,32 @@
+# Workflow Configuration
+project_name: "GitHub Maximization Protocol"
+owner: "hakankose"
+# Global Settings
+safe_mode: true
+max_daily_prs: 3
+log_level: "INFO"
+# Agent Schedules
+agents:
+  repo_gardener:
+    enabled: true
+    frequency: "weekly"
+    focus_dirs: 
+      - "."
+    ignore_patterns:
+      - "node_modules"
+      - ".git"
+  code_architect:
+    enabled: true
+    trigger: "manual"
+    default_stack: "python-agentic"
+  trend_surfer:
+    enabled: true
+    frequency: "daily"
+    topics:
+      - "agentic-ai"
+      - "llm"
+      - "generative-ui"
+  profile_polisher:
+    enabled: true
+    frequency: "weekly"
+    target_file: "README.md"
