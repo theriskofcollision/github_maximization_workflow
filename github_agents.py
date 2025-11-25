@@ -16,13 +16,33 @@ class Agent:
 
     def run(self, task: str, context: Dict = None) -> str:
         """
-        Simulates the agent running a task.
-        In a real scenario, this would call an LLM API.
+        Executes the agent's task using Google Gemini.
         """
         logger.info(f"[{self.name}] Starting task: {task}")
-        # Placeholder for LLM call
-        # response = llm_client.chat(messages=[{"role": "system", "content": self.system_prompt}, ...])
-        return f"[{self.name}] Completed task: {task}. (Simulation)"
+        
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            logger.warning("GEMINI_API_KEY not found. Running in simulation mode.")
+            return f"[{self.name}] Completed task: {task}. (Simulation - No API Key)"
+
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            model = genai.GenerativeModel('gemini-pro')
+            
+            prompt = f"""
+            System: {self.system_prompt}
+            Role: {self.role}
+            Goal: {self.goal}
+            Context: {context if context else {}}
+            Task: {task}
+            """
+            
+            response = model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            logger.error(f"Error calling Gemini API: {e}")
+            return f"Error: {e}"
 
 class RepoGardener(Agent):
     def audit_repo(self, repo_path: str):
