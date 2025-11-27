@@ -1,6 +1,7 @@
 import os
 import yaml
 import logging
+import requests
 from typing import List, Dict, Optional
 
 # Configure logging
