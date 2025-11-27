@@ -10,6 +10,7 @@ agents:
   repo_gardener:
     enabled: true
     frequency: "weekly"
+    audit_scope: "all" # Options: "current", "all", or list of specific repos
     focus_dirs: 
       - "."
     ignore_patterns:

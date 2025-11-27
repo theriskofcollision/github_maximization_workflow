@@ -82,15 +82,66 @@ def main():
     config = load_config("workflow_config.yml")
     logger.info(f"Starting {config['project_name']}...")
 
+    # GitHub API Helper
+    def get_github_headers():
+        token = os.getenv("GH_PAT") or os.getenv("GITHUB_TOKEN")
+        if not token:
+            raise ValueError("No GitHub token found. Please set GH_PAT or GITHUB_TOKEN.")
+        return {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github.v3+json"}
+
+    def fetch_repos(scope: str = "all") -> List[Dict]:
+        headers = get_github_headers()
+        repos = []
+        
+        if scope == "current":
+            # Just return the current repo context if available, or fail back to user
+            # For simplicity in this script, we might just fetch the user's repos
+            pass 
+        
+        # Fetch all repos for the authenticated user
+        url = "https://api.github.com/user/repos?per_page=100&type=all"
+        try:
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+            repos = response.json()
+        except Exception as e:
+            logger.error(f"Failed to fetch repos: {e}")
+            
+        return repos
+
+    def check_file_exists_api(repo_full_name: str, file_path: str) -> bool:
+        headers = get_github_headers()
+        url = f"https://api.github.com/repos/{repo_full_name}/contents/{file_path}"
+        response = requests.get(url, headers=headers)
+        return response.status_code == 200
+
     # Initialize Agents
     gardener = RepoGardener("RepoGardener", "Maintainer", "Keep repos healthy", "...")
     architect = CodeArchitect("CodeArchitect", "Builder", "Scaffold projects", "...")
     surfer = TrendSurfer("TrendSurfer", "Scout", "Find trends", "...")
     polisher = ProfilePolisher("ProfilePolisher", "Brand Manager", "Polish profile", "...")
 
-    # Example Workflow Execution
+    # Workflow Execution
     if config['agents']['repo_gardener']['enabled']:
-        gardener.audit_repo("/Users/hakankose/Documents/github_maximization_workflow")
+        scope = config['agents']['repo_gardener'].get('audit_scope', 'current')
+        
+        if scope == 'all':
+            logger.info("Fetching all repositories...")
+            repos = fetch_repos()
+            for repo in repos:
+                repo_name = repo['full_name']
+                logger.info(f"Auditing {repo_name}...")
+                
+                # Check for README using API
+                if not check_file_exists_api(repo_name, "README.md"):
+                     logger.warning(f"Missing README in {repo_name}")
+                     # Trigger LLM to generate one?
+                     # gardener.run(f"Generate a README for {repo_name}...", context=repo)
+                else:
+                    logger.info(f"{repo_name} is healthy.")
+        else:
+            # Fallback to local check for current repo
+            gardener.audit_repo(".")
 
     if config['agents']['trend_surfer']['enabled']:
         trends = surfer.find_trends(config['agents']['trend_surfer']['topics'])
