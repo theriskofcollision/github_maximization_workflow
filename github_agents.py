@@ -59,7 +59,7 @@ class Agent:
         try:
             import google.generativeai as genai
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-pro')
+            model = genai.GenerativeModel('gemini-1.0-pro')
             
             prompt = f"""
             System: {self.system_prompt}
