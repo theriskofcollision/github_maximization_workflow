@@ -110,7 +110,19 @@ class CodeArchitect(Agent):
         logger.info(f"[{self.name}] Handling MISSING_FILE: {file} in {repo}")
         
         # Generate content using LLM
-        content = self.run(f"Generate a professional {file} for the repository {repo}.")
+        prompt = f"Generate a professional {file} for the repository {repo}. IMPORTANT: Output ONLY the raw file content. Do not include any conversational text, 'Here is the file', or markdown code fences (```). Start directly with the file content."
+        content = self.run(prompt)
+        
+        # Clean up the response (remove markdown fences if present)
+        if content.startswith("```"):
+            content = content.split("\n", 1)[1]
+            if content.endswith("```"):
+                content = content.rsplit("\n", 1)[0]
+        
+        # Remove any leading conversational text if it doesn't look like a file start
+        # Simple heuristic: If it doesn't start with # or < or import or package, and has a double newline, split it.
+        # But the prompt engineering above should handle most cases.
+        
         logger.info(f"[{self.name}] Generated content for {file}:\n{content[:100]}...")
         
         # Commit to GitHub
