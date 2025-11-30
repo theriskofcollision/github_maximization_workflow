@@ -113,9 +113,50 @@ class CodeArchitect(Agent):
         content = self.run(f"Generate a professional {file} for the repository {repo}.")
         logger.info(f"[{self.name}] Generated content for {file}:\n{content[:100]}...")
         
-        # In a real scenario, we would commit this file back to the repo via API
-        # For now, we just log the generation
-        logger.info(f"[{self.name}] (Simulation) Would commit {file} to {repo}")
+        # Commit to GitHub
+        try:
+            commit_url = self.commit_file_to_github(repo, file, content, f"Create {file} via CodeArchitect Agent")
+            logger.info(f"[{self.name}] Successfully committed {file} to {repo}. URL: {commit_url}")
+        except Exception as e:
+            logger.error(f"[{self.name}] Failed to commit {file}: {e}")
+
+    def commit_file_to_github(self, repo_full_name: str, file_path: str, content: str, commit_message: str) -> str:
+        """
+        Commits a file to a GitHub repository using the API.
+        """
+        token = os.getenv("GH_PAT") or os.getenv("GITHUB_TOKEN")
+        if not token:
+            raise ValueError("No GitHub token found.")
+            
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github.v3+json"
+        }
+        
+        url = f"https://api.github.com/repos/{repo_full_name}/contents/{file_path}"
+        
+        # Check if file exists to get SHA (for updates)
+        sha = None
+        try:
+            get_response = requests.get(url, headers=headers)
+            if get_response.status_code == 200:
+                sha = get_response.json()['sha']
+        except Exception:
+            pass
+
+        import base64
+        content_b64 = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+        
+        data = {
+            "message": commit_message,
+            "content": content_b64
+        }
+        if sha:
+            data["sha"] = sha
+            
+        response = requests.put(url, headers=headers, json=data)
+        response.raise_for_status()
+        return response.json()['content']['html_url']
 
 class TrendSurfer(Agent):
     def find_trends(self, topics: List[str]):
