@@ -59,7 +59,7 @@ class Agent:
         try:
             import google.generativeai as genai
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-2.0-flash')
             
             prompt = f"""
             System: {self.system_prompt}
@@ -136,22 +136,6 @@ def load_config(config_path: str) -> Dict:
 def main():
     config = load_config("workflow_config.yml")
     logger.info(f"Starting {config['project_name']}...")
-
-    # --- Debug: List Available Models ---
-    try:
-        import google.generativeai as genai
-        api_key = os.getenv("GEMINI_API_KEY")
-        if api_key:
-            genai.configure(api_key=api_key)
-            logger.info("Listing available Gemini models:")
-            for m in genai.list_models():
-                if 'generateContent' in m.supported_generation_methods:
-                    logger.info(f"- {m.name}")
-        else:
-            logger.warning("No GEMINI_API_KEY found for model listing.")
-    except Exception as e:
-        logger.error(f"Failed to list models: {e}")
-    # ------------------------------------
 
     # Initialize Event Bus
     event_bus = EventBus()
