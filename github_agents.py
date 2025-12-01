@@ -86,13 +86,22 @@ class RepoGardener(Agent):
             return "Missing README"
         return "Repo looks healthy"
 
-    def audit_repo_api(self, repo_name: str, check_file_exists_api_func: Callable):
+    def audit_repo_api(self, repo_name: str, check_file_exists_api_func: Callable, check_workflow_status_func: Callable):
         logger.info(f"Auditing {repo_name}...")
+        
+        # 1. Check for README
         if not check_file_exists_api_func(repo_name, "README.md"):
              logger.warning(f"Missing README in {repo_name}")
              if self.event_bus:
                  self.event_bus.publish(Event("MISSING_FILE", {"repo": repo_name, "file": "README.md", "is_remote": True}))
-        else:
+        
+        # 2. Check Workflow Status
+        workflow_error = check_workflow_status_func(repo_name)
+        if workflow_error:
+            logger.error(f"Workflow Failure in {repo_name}: {workflow_error}")
+            # Future: Publish WORKFLOW_FAILED event
+        
+        if not workflow_error and check_file_exists_api_func(repo_name, "README.md"):
             logger.info(f"{repo_name} is healthy.")
 
 class CodeArchitect(Agent):
@@ -227,11 +236,21 @@ def main():
             
         return repos
 
-    def check_file_exists_api(repo_full_name: str, file_path: str) -> bool:
+    def check_workflow_status(repo_full_name: str) -> Optional[str]:
         headers = get_github_headers()
-        url = f"https://api.github.com/repos/{repo_full_name}/contents/{file_path}"
-        response = requests.get(url, headers=headers)
-        return response.status_code == 200
+        # Fetch the latest run (per_page=1 implies latest because default sort is created_at desc)
+        url = f"https://api.github.com/repos/{repo_full_name}/actions/runs?per_page=1"
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                if data['total_count'] > 0:
+                    latest_run = data['workflow_runs'][0]
+                    if latest_run['conclusion'] == 'failure':
+                        return f"Run #{latest_run['run_number']} ({latest_run['name']}) failed. URL: {latest_run['html_url']}"
+        except Exception as e:
+            logger.error(f"Failed to check workflows for {repo_full_name}: {e}")
+        return None
 
     # Workflow Execution
     if config['agents']['repo_gardener']['enabled']:
@@ -242,7 +261,7 @@ def main():
             repos = fetch_repos()
             for repo in repos:
                 repo_name = repo['full_name']
-                gardener.audit_repo_api(repo_name, check_file_exists_api)
+                gardener.audit_repo_api(repo_name, check_file_exists_api, check_workflow_status)
         else:
             # Fallback to local check for current repo
             gardener.audit_repo(".")
