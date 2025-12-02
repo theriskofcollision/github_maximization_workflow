@@ -143,48 +143,12 @@ class CodeArchitect(Agent):
         
         # Commit to GitHub
         try:
-            commit_url = self.commit_file_to_github(repo, file, content, f"Create {file} via CodeArchitect Agent")
+            commit_url = commit_file_to_github(repo, file, content, f"Create {file} via CodeArchitect Agent")
             logger.info(f"[{self.name}] Successfully committed {file} to {repo}. URL: {commit_url}")
         except Exception as e:
             logger.error(f"[{self.name}] Failed to commit {file}: {e}")
 
-    def commit_file_to_github(self, repo_full_name: str, file_path: str, content: str, commit_message: str) -> str:
-        """
-        Commits a file to a GitHub repository using the API.
-        """
-        token = os.getenv("GH_PAT") or os.getenv("GITHUB_TOKEN")
-        if not token:
-            raise ValueError("No GitHub token found.")
-            
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github.v3+json"
-        }
-        
-        url = f"https://api.github.com/repos/{repo_full_name}/contents/{file_path}"
-        
-        # Check if file exists to get SHA (for updates)
-        sha = None
-        try:
-            get_response = requests.get(url, headers=headers)
-            if get_response.status_code == 200:
-                sha = get_response.json()['sha']
-        except Exception:
-            pass
-
-        import base64
-        content_b64 = base64.b64encode(content.encode('utf-8')).decode('utf-8')
-        
-        data = {
-            "message": commit_message,
-            "content": content_b64
-        }
-        if sha:
-            data["sha"] = sha
-            
-        response = requests.put(url, headers=headers, json=data)
-        response.raise_for_status()
-        return response.json()['content']['html_url']
+    # commit_file_to_github moved to global scope
 
 class TrendSurfer(Agent):
     def find_trends(self, topics: List[str]) -> List[str]:
@@ -193,8 +157,8 @@ class TrendSurfer(Agent):
         trends = []
         
         # Search for recent high-star repos in these topics
-        # simplified query for demonstration
-        query = f"topic:{topics[0]} sort:stars order:desc created:>2024-01-01"
+        # Broader query to ensure results
+        query = f"topic:{topics[0]} sort:stars order:desc"
         url = f"https://api.github.com/search/repositories?q={query}&per_page=3"
         
         try:
@@ -216,10 +180,50 @@ class ProfilePolisher(Agent):
         
         content = f"\n\n## 🤖 Agentic Update\n- **Total Repos**: {stats.get('total_repos', 0)}\n- **Last Scan**: {stats.get('last_scan', 'N/A')}\n"
         
+        # Update README via GitHub API
+        # We need the current repo name. In 'all' scope, this agent runs once at the end.
+        # For simplicity, we'll assume we are updating the CURRENT repo's README.
+        # In a real scenario, we might pass the repo name.
+        # Let's try to infer it or use a config.
+        
+        # For this demo, we'll try to find the repo name from the environment or config
+        # If running in GitHub Actions, GITHUB_REPOSITORY is available.
+        repo_full_name = os.getenv("GITHUB_REPOSITORY")
+        
+        if not repo_full_name:
+             return "Skipping Profile Update: GITHUB_REPOSITORY env var not found (local run?)"
+
+        # Fetch current README content to append, or just append to the end
+        # Since API replaces content, we need to read -> append -> write
+        
         try:
-            with open("README.md", "a") as f:
-                f.write(content)
-            return "Profile README.md updated locally."
+            # 1. Get current content
+            headers = get_github_headers()
+            url = f"https://api.github.com/repos/{repo_full_name}/contents/README.md"
+            response = requests.get(url, headers=headers)
+            
+            current_content = ""
+            sha = None
+            if response.status_code == 200:
+                import base64
+                content_data = response.json()
+                current_content = base64.b64decode(content_data['content']).decode('utf-8')
+                sha = content_data['sha']
+            
+            # 2. Append stats
+            new_section = f"\n\n## 🤖 Agentic Update\n- **Total Repos**: {stats.get('total_repos', 0)}\n- **Last Scan**: {stats.get('last_scan', 'N/A')}\n"
+            
+            # Avoid duplicate sections if running multiple times
+            if "## 🤖 Agentic Update" in current_content:
+                # Replace the existing section (simple split)
+                current_content = current_content.split("## 🤖 Agentic Update")[0].strip()
+            
+            final_content = current_content + new_section
+            
+            # 3. Commit
+            commit_url = commit_file_to_github(repo_full_name, "README.md", final_content, "Update Profile Stats via ProfilePolisher")
+            return f"Profile README.md updated: {commit_url}"
+            
         except Exception as e:
             return f"Failed to update profile: {e}"
 
@@ -228,6 +232,36 @@ def get_github_headers():
     if not token:
         raise ValueError("No GitHub token found. Please set GH_PAT or GITHUB_TOKEN.")
     return {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github.v3+json"}
+
+def commit_file_to_github(repo_full_name: str, file_path: str, content: str, commit_message: str) -> str:
+    """
+    Commits a file to a GitHub repository using the API.
+    """
+    headers = get_github_headers()
+    url = f"https://api.github.com/repos/{repo_full_name}/contents/{file_path}"
+    
+    # Check if file exists to get SHA (for updates)
+    sha = None
+    try:
+        get_response = requests.get(url, headers=headers)
+        if get_response.status_code == 200:
+            sha = get_response.json()['sha']
+    except Exception:
+        pass
+
+    import base64
+    content_b64 = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+    
+    data = {
+        "message": commit_message,
+        "content": content_b64
+    }
+    if sha:
+        data["sha"] = sha
+        
+    response = requests.put(url, headers=headers, json=data)
+    response.raise_for_status()
+    return response.json()['content']['html_url']
 
 def load_config(config_path: str) -> Dict:
     with open(config_path, 'r') as f:
