@@ -187,16 +187,47 @@ class CodeArchitect(Agent):
         return response.json()['content']['html_url']
 
 class TrendSurfer(Agent):
-    def find_trends(self, topics: List[str]):
+    def find_trends(self, topics: List[str]) -> List[str]:
         logger.info(f"Scanning trends for: {topics}")
-        # Logic to scrape or query GitHub API
-        return ["https://github.com/example/trending-repo"]
+        headers = get_github_headers()
+        trends = []
+        
+        # Search for recent high-star repos in these topics
+        # simplified query for demonstration
+        query = f"topic:{topics[0]} sort:stars order:desc created:>2024-01-01"
+        url = f"https://api.github.com/search/repositories?q={query}&per_page=3"
+        
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                items = response.json().get('items', [])
+                for item in items:
+                    trends.append(f"{item['full_name']} - ⭐ {item['stargazers_count']} ({item['html_url']})")
+        except Exception as e:
+            logger.error(f"Failed to find trends: {e}")
+            
+        return trends
 
 class ProfilePolisher(Agent):
     def update_profile(self, stats: Dict):
         logger.info(f"Updating profile with stats: {stats}")
         # Logic to update README.md
-        return "Profile updated."
+        # For now, we'll just log what we WOULD do, or append to a local file if it exists
+        
+        content = f"\n\n## 🤖 Agentic Update\n- **Total Repos**: {stats.get('total_repos', 0)}\n- **Last Scan**: {stats.get('last_scan', 'N/A')}\n"
+        
+        try:
+            with open("README.md", "a") as f:
+                f.write(content)
+            return "Profile README.md updated locally."
+        except Exception as e:
+            return f"Failed to update profile: {e}"
+
+def get_github_headers():
+    token = os.getenv("GH_PAT") or os.getenv("GITHUB_TOKEN")
+    if not token:
+        raise ValueError("No GitHub token found. Please set GH_PAT or GITHUB_TOKEN.")
+    return {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github.v3+json"}
 
 def load_config(config_path: str) -> Dict:
     with open(config_path, 'r') as f:
@@ -219,11 +250,7 @@ def main():
     event_bus.subscribe("MISSING_FILE", architect.handle_missing_file)
 
     # GitHub API Helper
-    def get_github_headers():
-        token = os.getenv("GH_PAT") or os.getenv("GITHUB_TOKEN")
-        if not token:
-            raise ValueError("No GitHub token found. Please set GH_PAT or GITHUB_TOKEN.")
-        return {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github.v3+json"}
+    # get_github_headers is now global
 
     def fetch_repos(scope: str = "all") -> List[Dict]:
         headers = get_github_headers()
@@ -307,7 +334,17 @@ def main():
 
     if config['agents']['trend_surfer']['enabled']:
         trends = surfer.find_trends(config['agents']['trend_surfer']['topics'])
-        logger.info(f"Found trends: {trends}")
+        logger.info(f"Found trends:\n" + "\n".join(trends))
+
+    if config['agents']['profile_polisher']['enabled']:
+        # Calculate simple stats
+        import datetime
+        stats = {
+            "total_repos": len(repos) if 'repos' in locals() else 0,
+            "last_scan": datetime.datetime.now().isoformat()
+        }
+        result = polisher.update_profile(stats)
+        logger.info(result)
 
     # Process Event Queue
     logger.info("Processing Event Queue...")
