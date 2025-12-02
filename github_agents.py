@@ -3,7 +3,12 @@ import yaml
 import logging
 import requests
 from typing import List, Dict, Optional, Callable
+from typing import List, Dict, Optional, Callable
 from collections import deque
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -252,6 +257,15 @@ def main():
                 logger.error(f"Failed to create issue: {response.text}")
         except Exception as e:
             logger.error(f"Error creating issue: {e}")
+
+    def check_file_exists_api(repo_full_name: str, file_path: str) -> bool:
+        headers = get_github_headers()
+        url = f"https://api.github.com/repos/{repo_full_name}/contents/{file_path}"
+        try:
+            response = requests.get(url, headers=headers)
+            return response.status_code == 200
+        except Exception:
+            return False
 
     def check_workflow_status(repo_full_name: str) -> List[str]:
         headers = get_github_headers()
